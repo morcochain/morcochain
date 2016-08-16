@@ -1,0 +1,61 @@
+From the Nu repository root build the nugitian/base image:
+
+    docker build -t nugitian/base $PWD/contrib/gitian-docker
+
+Then the nugitian/setup image:
+
+    ID=`docker run --privileged -d -v $PWD:/nubit -t nugitian/base /setup.sh` && docker attach $ID
+    docker commit $ID nugitian/setup
+
+If the setup fails you should still commit the container to save the current state. Then you can start the container to complete the jobs manually and commit again:
+
+    ID=`docker run --privileged -d -v $PWD:/nubit -ti nugitian/setup bash` && docker attach $ID
+    service apt-cacher-ng start
+    cd gitian-builder
+    # finish the setup process manually and exit the container
+    docker commit $ID nugitian/setup
+
+
+Then you must choose to either build from your local repository or from the official repository.
+
+To build from your local repository:
+
+* modify `contrib/gitian-descriptors/gitian-linux.yml` and `contrib/gitian-descriptors/gitian-win.yml`: replace the line `- "url": "git@bitbucket.org:JordanLeePeershares/nubit.git"` with `- "url": "/nubit"`
+* start the container with `docker run --privileged -ti -w /gitian-builder -v $PWD:/nubit nugitian/setup bash`
+
+To build from the official repository start the container with this command:
+
+    docker run --privileged -ti -w /gitian-builder -v $PWD:/nubit nugitian/setup bash
+
+Then you're inside the container. Verify KVM is working:
+
+    kvm-ok
+
+Start apt-cacher-ng:
+
+    service apt-cacher-ng start
+
+Then define the version you want to build (v$VERSION must be an annotated tag on the target repository):
+
+    export VERSION=2.0.0-RC1
+
+Set the number of processors you want to allocate to the build:
+
+    export NPROCS=4
+    export MEMORY=4000
+
+Then to build the Linux binaries:
+
+    ./bin/gbuild -j $NPROCS -m $MEMORY --commit nubit=v${VERSION} ../nubit/contrib/gitian-descriptors/gitian-linux.yml
+    pushd build/out
+    zip -r nu-${VERSION}-linux-gitian.zip *
+    mv nu-${VERSION}-linux-gitian.zip /nubit/
+    popd
+
+And to build the Windows binaries:
+
+    ./bin/gbuild -j $NPROCS -m $MEMORY --commit nubit=v${VERSION} ../nubit/contrib/gitian-descriptors/gitian-win.yml
+    pushd build/out
+    zip -r nu-${VERSION}-win-gitian.zip *
+    mv nu-${VERSION}-win-gitian.zip /nubit/
+    popd
